@@ -1,4 +1,4 @@
-# Fhoto_Reader_AI
+# Photo_Reader_AI
 ## Aplicativo de Interpretação de Imagem para Deficientes Visuais
 
 Este projeto é um aplicativo acessível para dispositivos móveis que utiliza tecnologias de visão computacional para ajudar pessoas com deficiência visual a interpretar e entender imagens. O aplicativo permite que o usuário tire uma foto ou selecione uma imagem da galeria, e então fornece uma descrição detalhada do conteúdo visual.

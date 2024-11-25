@@ -1,0 +1,48 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Gemini API</title>
+    <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@100;200;300;400;500;600;700;800;900&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/materialize/1.0.0/css/materialize.min.css">
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <header class="header">
+        <h1>PHOTO READER AI</h1>
+    </header>
+    <main class="container">
+        <div class="row">
+            <form id="uploadForm" class="col s12">
+                <div class="file-field input-field">
+                    <div class="btn">
+                        <span>Upload Image</span>
+                        <input type="file" id="imageInput" accept="image/*">
+                    </div>
+                    <div class="file-path-wrapper">
+                        <input class="file-path validate" type="text" placeholder="Envei uma foto para descrever">
+                    </div>
+                </div>
+                <button class="btn waves-effect waves-light" type="submit" id="analiseBtn" disabled>Análise</button>
+            </form>
+        </div>
+        <div class="row">
+            <div id="imagePreview" class="col s12 center-align">
+            </div>
+        </div>
+        <div class="row">
+            <div id="progressBar" class="col s12">
+                <div class="progress">
+                    <div class="indeterminate"></div>
+                </div>
+            </div>
+        </div>
+        <div class="row">
+            <div id="result" class="col s12">
+            </div>
+        </div>
+    </main>
+    <script type="module" src="index.js"></script>
+</body>
+</html>

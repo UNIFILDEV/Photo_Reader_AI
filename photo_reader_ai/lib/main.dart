@@ -1,201 +1,211 @@
-import 'package:flutter/material.dart';
-import 'package:image_picker/image_picker.dart';
-import 'package:flutter_tts/flutter_tts.dart';
-import 'package:sqflite/sqflite.dart';
-import 'package:path_provider/path_provider.dart';
 import 'dart:io';
 import 'dart:convert';
+import 'package:flutter/material.dart';
+import 'package:flutter_tts/flutter_tts.dart';
 import 'package:http/http.dart' as http;
-import 'package:audioplayers/audioplayers.dart'; // Importando a biblioteca de áudio
+import 'package:image_picker/image_picker.dart';
 
 void main() {
-  runApp(VisionApp());
+  runApp(MyApp());
 }
 
-class VisionApp extends StatelessWidget {
+class MyApp extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
-      home: HomePage(),
+      debugShowCheckedModeBanner: false,
+      home: ImageDescriptionPage(),
     );
   }
 }
 
-class HomePage extends StatefulWidget {
+class ImageDescriptionPage extends StatefulWidget {
   @override
-  _HomePageState createState() => _HomePageState();
+  _ImageDescriptionPageState createState() => _ImageDescriptionPageState();
 }
 
-class _HomePageState extends State<HomePage> {
+class _ImageDescriptionPageState extends State<ImageDescriptionPage> {
   final ImagePicker _picker = ImagePicker();
-  FlutterTts _flutterTts = FlutterTts();
-  Database? _database;
-  List<Map> _historico = [];
+  late FlutterTts _flutterTts;
+  String? _description;
+  File? _selectedImage;
+  bool _isLoading = false;
 
   @override
   void initState() {
     super.initState();
-    _initializeDatabase();
+    _flutterTts = FlutterTts();
   }
 
-  _initializeDatabase() async {
-    final directory = await getApplicationDocumentsDirectory();
-    final path = '${directory.path}/vision_history.db';
-    _database = await openDatabase(path, version: 1, onCreate: (db, version) {
-      db.execute('''
-        CREATE TABLE IF NOT EXISTS history (
-          id INTEGER PRIMARY KEY AUTOINCREMENT,
-          description TEXT,
-          imagePath TEXT,
-          audioPath TEXT
-        )
-      ''');
-    });
+  @override
+  void dispose() {
+    _flutterTts.stop();
+    super.dispose();
   }
 
-  Future<void> _captureImage() async {
-    final XFile? image = await _picker.pickImage(source: ImageSource.camera);
-    if (image != null) {
-      String imagePath = image.path;
-      String description = await _getImageDescription(imagePath);
-      String audioPath = await _generateAudio(description);
-      print("========_captureImage======");
-      print(description);
-      print(imagePath);
-      print(audioPath);
-      print("==============");
-      _saveToHistory(description, imagePath, audioPath);
+  Future<void> _captureOrPickImage() async {
+    try {
+      showModalBottomSheet(
+        context: context,
+        builder: (context) => SafeArea(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              ListTile(
+                leading: const Icon(Icons.camera_alt),
+                title: const Text("Tirar Foto"),
+                onTap: () async {
+                  Navigator.pop(context);
+                  final XFile? imageFile = await _picker.pickImage(source: ImageSource.camera);
+                  if (imageFile != null) {
+                    await _processImage(File(imageFile.path));
+                  }
+                },
+              ),
+              ListTile(
+                leading: const Icon(Icons.photo_library),
+                title: const Text("Selecionar da Galeria"),
+                onTap: () async {
+                  Navigator.pop(context);
+                  final XFile? imageFile = await _picker.pickImage(source: ImageSource.gallery);
+                  if (imageFile != null) {
+                    await _processImage(File(imageFile.path));
+                  }
+                },
+              ),
+            ],
+          ),
+        ),
+      );
+    } catch (e) {
+      print("Erro ao selecionar imagem: $e");
     }
   }
 
-  Future<String> _getImageDescription(String imagePath) async {
-    final apiKey = 'AIzaSyAZ4YBfvklEuNYJyfFMnLaOUKtLFAH36SQ';
-    final url = 'https://vision.googleapis.com/v1/images:annotate?key=$apiKey';
+  Future<void> _processImage(File imageFile) async {
+    setState(() {
+      _isLoading = true;
+    });
 
-    final imageBytes = await File(imagePath).readAsBytes();
-    final base64Image = base64Encode(imageBytes);
+    final description = await _getDescription(imageFile);
+
+    setState(() {
+      _isLoading = false;
+      if (description != null) {
+        _selectedImage = imageFile;
+        _description = description;
+      }
+    });
+
+    if (description != null) {
+      await _speak(description);
+    }
+  }
+
+  Future<String?> _getDescription(File imageFile) async {
+    final apiKey = "AIzaSyAZ4YBfvklEuNYJyfFMnLaOUKtLFAH36SQ";
+    final url = "https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=$apiKey";
+
+    final bytes = await imageFile.readAsBytes();
+    final base64Image = base64Encode(bytes);
 
     final response = await http.post(
       Uri.parse(url),
       headers: {'Content-Type': 'application/json'},
-      body: json.encode({
-        'requests': [
+      body: jsonEncode({
+        "contents": [
           {
-            'image': {'content': base64Image},
-            'features': [
-              {'type': 'LABEL_DETECTION'}
-            ]
-          }
-        ]
+            "parts": [
+              {"text": "O que é essa foto?"},
+              {
+                "inline_data": {
+                  "mime_type": "image/jpeg",
+                  "data": base64Image,
+                },
+              },
+            ],
+          },
+        ],
       }),
     );
 
     if (response.statusCode == 200) {
-      final data = json.decode(response.body);
-      final List<String> descriptions = [];
-      for (var item in data['responses'][0]['labelAnnotations']) {
-        descriptions.add(item['description'].toString());
-      }
-
-      return descriptions.join(', ');
+      final data = jsonDecode(response.body);
+      return data['candidates']?[0]['content']?['parts']
+          ?.map((part) => part['text'])
+          .join(" ");
     } else {
-      throw Exception('Falha na API Vision');
+      print("Erro na API: ${response.body}");
+      return null;
     }
   }
 
-  Future<String> _generateAudio(String description) async {
-    final directory = await getApplicationDocumentsDirectory();
-    final audioFile = File('${directory.path}/audio.mp3');
-
-    await _flutterTts.speak(description);
-    return audioFile.path;
-  }
-
-  _saveToHistory(String description, String imagePath, String audioPath) async {
-    await _database?.insert('history', {
-      'description': description,
-      'imagePath': imagePath,
-      'audioPath': audioPath
-    });
-    _loadHistory();
-  }
-
-  _loadHistory() async {
-    final List<Map> history = await _database?.query('history') ?? [];
-    setState(() {
-      _historico = history;
-    });
+  Future<void> _speak(String text) async {
+    await _flutterTts.setLanguage("pt-BR");
+    await _flutterTts.speak(text);
   }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: Text('Vision App')),
-      body: Column(
-        children: [
-          ElevatedButton(
-            onPressed: _captureImage,
-            child: Text('Capturar Imagem'),
-          ),
-          ElevatedButton(
-            onPressed: () {
-              Navigator.push(
-                context,
-                MaterialPageRoute(
-                  builder: (context) => HistoryPage(_historico),
+      appBar: AppBar(
+        title: const Text("Photo Reader AI"),
+      ),
+      body: SingleChildScrollView(
+        child: Padding(
+          padding: const EdgeInsets.all(16.0),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.center,
+            children: [
+              ElevatedButton.icon(
+                onPressed: _captureOrPickImage,
+                icon: const Icon(Icons.add_a_photo),
+                label: const Text("Adicionar Foto"),
+                style: ElevatedButton.styleFrom(
+                  padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
+                  alignment: Alignment.center,
                 ),
-              );
-            },
-            child: Text('Ver Histórico'),
+              ),
+              const SizedBox(height: 16.0),
+              if (_isLoading)
+                const Center(child: CircularProgressIndicator()),
+              if (_selectedImage != null)
+                Column(
+                  children: [
+                    Image.file(
+                      _selectedImage!,
+                      width: double.infinity,
+                      height: 200,
+                      fit: BoxFit.cover,
+                    ),
+                    const SizedBox(height: 16.0),
+                  ],
+                ),
+              if (_description != null)
+                Container(
+                  padding: const EdgeInsets.all(16.0),
+                  margin: const EdgeInsets.only(top: 16.0),
+                  decoration: BoxDecoration(
+                    color: Colors.white,
+                    borderRadius: BorderRadius.circular(8.0),
+                    boxShadow: [
+                      BoxShadow(
+                        color: Colors.black26,
+                        blurRadius: 8.0,
+                        offset: Offset(2, 2),
+                      ),
+                    ],
+                  ),
+                  child: Text(
+                    _description!,
+                    textAlign: TextAlign.center,
+                    style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+                  ),
+                ),
+            ],
           ),
-        ],
+        ),
       ),
     );
-  }
-}
-
-class HistoryPage extends StatelessWidget {
-  final List<Map> historico;
-  HistoryPage(this.historico);
-
-  final AudioPlayer _audioPlayer = AudioPlayer();
-
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(title: Text('Histórico')),
-      body: ListView.builder(
-        itemCount: historico.length,
-        itemBuilder: (context, index) {
-          var item = historico[index];
-          return ListTile(
-            title: Text(item['description']),
-            subtitle: Text(item['imagePath']),
-            onTap: () {
-              _showImageDialog(context, item['imagePath']);
-
-              _playAudio(item['audioPath']);
-            },
-          );
-        },
-      ),
-    );
-  }
-
-  _showImageDialog(BuildContext context, String imagePath) {
-    showDialog(
-      context: context,
-      builder: (BuildContext context) {
-        return Dialog(
-          child: Image.file(File(imagePath)),
-        );
-      },
-    );
-  }
-
-  _playAudio(String audioPath) async {
-    if (audioPath.isNotEmpty) {
-      await _audioPlayer.play(DeviceFileSource(audioPath));
-    }
   }
 }

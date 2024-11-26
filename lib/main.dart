@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_tts/flutter_tts.dart';
 import 'package:http/http.dart' as http;
 import 'package:image_picker/image_picker.dart';
+import 'secrets.dart';
 
 void main() {
   runApp(MyApp());
@@ -103,7 +104,6 @@ class _ImageDescriptionPageState extends State<ImageDescriptionPage> {
   }
 
   Future<String?> _getDescription(File imageFile) async {
-    final apiKey = "AIzaSyAZ4YBfvklEuNYJyfFMnLaOUKtLFAH36SQ";
     final url = "https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=$apiKey";
 
     final bytes = await imageFile.readAsBytes();

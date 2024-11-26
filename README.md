@@ -24,3 +24,23 @@ Este projeto é um aplicativo acessível para dispositivos móveis que utiliza t
 - Conexão com a internet
 
 **Nota**: Este aplicativo tem como objetivo auxiliar pessoas com deficiência visual e deve ser utilizado em conjunto com outros recursos de acessibilidade oferecidos pelo sistema operacional do dispositivo.
+
+
+# Configuração do Arquivo `secrets.dart`
+
+Para garantir a segurança da chave da API utilizada neste projeto, a chave é armazenada em um arquivo local chamado `secrets.dart`. Este arquivo **não está incluído no repositório** e deve ser gerado manualmente seguindo as instruções abaixo.
+
+## 1. Obter a chave da API no Google Cloud
+1. Acesse o console do Google Cloud: [Google Cloud Console - APIs & Credentials](https://console.cloud.google.com/apis/credentials).
+2. Selecione ou crie um projeto no Google Cloud.
+3. Na seção **Credenciais**, clique em **Criar credenciais** e escolha **Chave de API**.
+4. Copie a chave gerada e guarde-a temporariamente.
+
+## 2. Criar o arquivo `secrets.dart`
+1. No diretório `lib/` do projeto Flutter, crie um arquivo chamado `secrets.dart`.
+2. Adicione o seguinte conteúdo ao arquivo, substituindo `SUA_API_KEY_AQUI` pela chave gerada no passo anterior:
+
+    ```dart
+    const String apiKey = "SUA_API_KEY_AQUI";
+    ```
+3. Garanta que a api do Gemini API está habilitada no teu projeto do Google Cloud.

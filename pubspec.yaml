@@ -1,5 +1,5 @@
-name: photo_reader_ai
-description: "A new Flutter project."
+name: Photo_Reader_AI
+description: "Photo_Reader_AI"
 
 version: 1.0.0+1
 
@@ -22,14 +22,21 @@ dependencies:
   camera: ^0.11.0
   flutter_tts: ^3.6.3
   cupertino_icons: ^1.0.8
+  google_fonts: ^4.0.4
 
 dev_dependencies:
+  flutter_launcher_icons: "^0.9.3"
   flutter_test:
     sdk: flutter
 
   flutter_lints: ^4.0.0
 
 
-flutter:
+flutter_icons:
+  android: true
+  image_path: "assets/images/ic_launcher.png"
 
+flutter:
   uses-material-design: true
+  assets:
+    - assets/images/

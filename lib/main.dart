@@ -34,6 +34,7 @@ class _ImageDescriptionPageState extends State<ImageDescriptionPage> {
   late FlutterTts _flutterTts;
   CameraController? _cameraController;
   late List<CameraDescription> _cameras;
+  String? _prompt;
   String? _description;
   File? _selectedImage;
   bool _isLoading = false;
@@ -171,6 +172,9 @@ class _ImageDescriptionPageState extends State<ImageDescriptionPage> {
   }
 
   Future<String?> _getDescription(File imageFile) async {
+    setState(() {
+      _prompt = _prompt ?? "O que é essa foto";
+    });
     final url = "https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=$apiKey";
 
     final bytes = await imageFile.readAsBytes();
@@ -183,7 +187,7 @@ class _ImageDescriptionPageState extends State<ImageDescriptionPage> {
         "contents": [
           {
             "parts": [
-              {"text": "O que é essa foto?"},
+              {"text": "$_prompt ? Favor responda em Português-BR"},
               {
                 "inline_data": {
                   "mime_type": "image/jpeg",
@@ -195,13 +199,15 @@ class _ImageDescriptionPageState extends State<ImageDescriptionPage> {
         ],
       }),
     );
-
+    setState(() {
+      _prompt = null;
+    });
     if (response.statusCode == 200) {
       final data = jsonDecode(response.body);
       return data['candidates']?[0]['content']?['parts']
           ?.map((part) => part['text'])
-          .join(" ");
-          .replace(/[`*]/g, '');
+          .join(" ")
+          .replaceAll(RegExp(r'[`*]'), '');
     } else {
       _showErrorNotification("Erro na API: ${response.body}");
       await _speak("Erro na API");
@@ -261,6 +267,45 @@ class _ImageDescriptionPageState extends State<ImageDescriptionPage> {
     }
   }
 
+  Future<void> _editPrompt() async {
+    String? newPrompt = '';
+    String? result = await showDialog<String>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: Text("Editar Prompt"),
+        content: TextField(
+          onChanged: (value) {
+            newPrompt = value; 
+          },
+          decoration: InputDecoration(
+            hintText: "Digite um novo prompt...",
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () {
+              Navigator.of(context).pop(newPrompt);
+            },
+            child: Text("Salvar"),
+          ),
+          TextButton(
+            onPressed: () {
+              Navigator.of(context).pop();
+            },
+            child: Text("Cancelar"),
+          ),
+        ],
+      ),
+    );
+
+    if (result != null && result.isNotEmpty) {
+      setState(() {
+        _prompt = result;
+      });
+    }
+  }
+
+
  @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -283,6 +328,16 @@ class _ImageDescriptionPageState extends State<ImageDescriptionPage> {
             ),
             centerTitle: true,
             backgroundColor: const Color(0xFFFF6D00),
+            leading: IconButton(
+              icon: Icon(
+                Icons.edit,
+                color: Colors.white,
+              ),
+              onPressed: () async {
+                 _editPrompt();
+              },
+              tooltip: 'Editar',
+            ),
             actions: [
               IconButton(
                 icon: Icon(
@@ -302,7 +357,7 @@ class _ImageDescriptionPageState extends State<ImageDescriptionPage> {
                 ),
                 onPressed: _toggleIconFlash,
                 tooltip: _isFlashOn ? 'Desligar Flash' : 'Ligar Flash',
-              )
+              ),
             ],
           ),
         ),

@@ -223,6 +223,7 @@ class _ImageDescriptionPageState extends State<ImageDescriptionPage> {
 
   Future<void> _speak(String text) async {
     await _flutterTts.setLanguage("pt-BR");
+    await _flutterTts.setSpeechRate(0.6);
     await _flutterTts.speak(text);
   }
 

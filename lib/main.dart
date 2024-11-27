@@ -201,6 +201,7 @@ class _ImageDescriptionPageState extends State<ImageDescriptionPage> {
       return data['candidates']?[0]['content']?['parts']
           ?.map((part) => part['text'])
           .join(" ");
+          .replace(/[`*]/g, '');
     } else {
       _showErrorNotification("Erro na API: ${response.body}");
       await _speak("Erro na API");

@@ -4,7 +4,11 @@ import 'package:flutter/material.dart';
 import 'package:flutter_tts/flutter_tts.dart';
 import 'package:http/http.dart' as http;
 import 'package:image_picker/image_picker.dart';
+import 'package:google_fonts/google_fonts.dart';
 import 'secrets.dart';
+import 'package:camera/camera.dart';
+import 'package:permission_handler/permission_handler.dart';
+import 'package:Photo_Reader_AI/helpers/connectivity_helper.dart';
 
 void main() {
   runApp(MyApp());
@@ -28,62 +32,122 @@ class ImageDescriptionPage extends StatefulWidget {
 class _ImageDescriptionPageState extends State<ImageDescriptionPage> {
   final ImagePicker _picker = ImagePicker();
   late FlutterTts _flutterTts;
+  CameraController? _cameraController;
+  late List<CameraDescription> _cameras;
   String? _description;
   File? _selectedImage;
   bool _isLoading = false;
+  bool _isCameraPreviewVisible = false;
+  bool _isFlashOn = true;
 
   @override
   void initState() {
     super.initState();
     _flutterTts = FlutterTts();
+    _checkCameraPermission();
   }
 
   @override
   void dispose() {
+    _cameraController?.dispose();
     _flutterTts.stop();
     super.dispose();
   }
 
-  Future<void> _captureOrPickImage() async {
-    try {
-      showModalBottomSheet(
-        context: context,
-        builder: (context) => SafeArea(
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              ListTile(
-                leading: const Icon(Icons.camera_alt),
-                title: const Text("Tirar Foto"),
-                onTap: () async {
-                  Navigator.pop(context);
-                  final XFile? imageFile = await _picker.pickImage(source: ImageSource.camera);
-                  if (imageFile != null) {
-                    await _processImage(File(imageFile.path));
-                  }
-                },
-              ),
-              ListTile(
-                leading: const Icon(Icons.photo_library),
-                title: const Text("Selecionar da Galeria"),
-                onTap: () async {
-                  Navigator.pop(context);
-                  final XFile? imageFile = await _picker.pickImage(source: ImageSource.gallery);
-                  if (imageFile != null) {
-                    await _processImage(File(imageFile.path));
-                  }
-                },
-              ),
-            ],
-          ),
-        ),
-      );
-    } catch (e) {
-      print("Erro ao selecionar imagem: $e");
+  Future<void> _clearAnalise() async {
+    _flutterTts.stop();
+    _description = null;
+    _selectedImage = null;
+  }
+
+  Future<void> _checkCameraPermission() async {
+    final status = await Permission.camera.request();
+    if (status.isGranted) {
+      await _initializeCamera();
+    } else {
+      _showErrorNotification('Permissão de câmera não concedida');
+      await _speak('Permissão de câmera não concedida');
     }
   }
 
+  Future<void> _initializeCamera() async {
+    try {
+      _cameras = await availableCameras();
+      _cameraController = CameraController(
+        _cameras.first,
+        ResolutionPreset.medium,
+      );
+      await _cameraController?.initialize();
+      setState(() {});
+    } catch (e) {
+      _showErrorNotification("Erro ao inicializar câmera: $e");
+      await _speak("Erro ao inicializar câmera: $e");
+    }
+  }
+
+  Future<void> _captureImage() async {
+    _clearAnalise();
+    final XFile? imageFile = await _picker.pickImage(source: ImageSource.camera);
+    if (imageFile != null) {
+      await _processImage(File(imageFile.path));
+    }
+    _hideCameraPreview();
+  }
+
+  Future<void> _captureImageAuto() async {
+    _clearAnalise();
+    if (!(_cameraController?.value.isInitialized ?? false)) {
+      _hideCameraPreview();
+      _showErrorNotification("Câmera não está inicializada.");
+      await _speak("Câmera não está inicializada, verifique as permissões de camera do app.");
+      return;
+    }
+    try {
+      if(!_isCameraPreviewVisible){
+      _toggleCameraPreview();
+      }
+      if(_isFlashOn){
+        _toggleFlash();
+      }
+      await Future.delayed(Duration(milliseconds: 1200));
+      final XFile imageFile = await _cameraController!.takePicture();
+      await _cameraController?.setFlashMode(FlashMode.off);
+      _hideCameraPreview();
+      setState(() {
+        _isLoading = true;
+      });
+      await _processImage(File(imageFile.path));
+      setState(() {
+        _isLoading = false;
+      });
+    } catch (e) {
+      _hideCameraPreview();
+      _showErrorNotification("Erro ao capturar imagem: $e");
+      await _speak("Erro ao capturar imagem: $e");
+      setState(() {
+        _isLoading = false;
+      });
+    }
+  }
+
+  Future<void> _pickFromGallery() async {
+    _clearAnalise();
+    final XFile? imageFile = await _picker.pickImage(source: ImageSource.gallery);
+    if (imageFile != null) {
+      await _processImage(File(imageFile.path));
+    }
+    _hideCameraPreview();
+  }
+
   Future<void> _processImage(File imageFile) async {
+    bool isConnected = await ConnectivityHelper.checkConnection(context);
+    if (!isConnected) {
+      _showErrorNotification('Verifique sua conexão com a internet.');
+      await _speak('Verifique sua conexão com a internet.');
+      _isLoading = false;
+      return;
+    }
+
     setState(() {
       _isLoading = true;
     });
@@ -100,6 +164,9 @@ class _ImageDescriptionPageState extends State<ImageDescriptionPage> {
 
     if (description != null) {
       await _speak(description);
+    } else {
+      _showErrorNotification('Não foi possível obter a descrição');
+      await _speak('Não foi possível obter a descrição');
     }
   }
 
@@ -135,9 +202,23 @@ class _ImageDescriptionPageState extends State<ImageDescriptionPage> {
           ?.map((part) => part['text'])
           .join(" ");
     } else {
-      print("Erro na API: ${response.body}");
+      _showErrorNotification("Erro na API: ${response.body}");
+      await _speak("Erro na API");
       return null;
     }
+  }
+
+  void _showErrorNotification(String message) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(
+          message,
+          style: TextStyle(color: Colors.white),
+        ),
+        backgroundColor: Colors.red,
+        duration: const Duration(seconds: 5),
+      ),
+    );
   }
 
   Future<void> _speak(String text) async {
@@ -145,63 +226,197 @@ class _ImageDescriptionPageState extends State<ImageDescriptionPage> {
     await _flutterTts.speak(text);
   }
 
-  @override
+  void _toggleCameraPreview() {
+    setState(() {
+      if (!_isCameraPreviewVisible) {
+      _clearAnalise();
+      }
+      _isCameraPreviewVisible = !_isCameraPreviewVisible;
+    });
+  }
+
+  void _hideCameraPreview() {
+    setState(() {
+      _isCameraPreviewVisible = false;
+    });
+  }
+
+  Future<void> _toggleIconFlash() async {
+    if (_cameraController?.value.isInitialized ?? false) {
+      setState(() {
+        _isFlashOn = !_isFlashOn;
+      });
+    }
+  }
+  
+  Future<void> _toggleFlash() async {
+     if (_cameraController?.value.isInitialized ?? false) {
+      if (_isFlashOn) {
+        await _cameraController?.setFlashMode(FlashMode.torch);
+      } else {
+        await _cameraController?.setFlashMode(FlashMode.off);
+      }
+    }
+  }
+
+ @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(
-        title: const Text("Photo Reader AI"),
-      ),
-      body: SingleChildScrollView(
-        child: Padding(
-          padding: const EdgeInsets.all(16.0),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.center,
-            children: [
-              ElevatedButton.icon(
-                onPressed: _captureOrPickImage,
-                icon: const Icon(Icons.add_a_photo),
-                label: const Text("Adicionar Foto"),
-                style: ElevatedButton.styleFrom(
-                  padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
-                  alignment: Alignment.center,
-                ),
+      appBar: PreferredSize(
+        preferredSize: Size.fromHeight(60),
+        child: ClipRRect(
+          borderRadius: const BorderRadius.only(
+            bottomLeft: Radius.circular(26),
+            bottomRight: Radius.circular(26),
+          ),
+          child: AppBar(
+            title: Text(
+              "Photo Reader AI",
+              style: GoogleFonts.poppins(
+                color: Colors.white,
+                fontSize: 24,
+                fontWeight: FontWeight.w600,
               ),
-              const SizedBox(height: 16.0),
-              if (_isLoading)
-                const Center(child: CircularProgressIndicator()),
-              if (_selectedImage != null)
-                Column(
+              textAlign: TextAlign.center,
+            ),
+            centerTitle: true,
+            backgroundColor: const Color(0xFFFF6D00),
+            actions: [
+              IconButton(
+                icon: Icon(
+                  _isCameraPreviewVisible ? Icons.visibility : Icons.visibility_off,
+                  color: Colors.white,
+                ),
+                onPressed: () async {
+                  if(!_isLoading)
+                    _toggleCameraPreview();
+                },
+                tooltip: _isCameraPreviewVisible ? 'Ocultar Preview' : 'Visualizar Preview',
+              ),
+             IconButton(
+                icon: Icon(
+                  _isFlashOn ? Icons.flash_on : Icons.flash_off,
+                  color: Colors.white,
+                ),
+                onPressed: _toggleIconFlash,
+                tooltip: _isFlashOn ? 'Desligar Flash' : 'Ligar Flash',
+              )
+            ],
+          ),
+        ),
+      ),
+      backgroundColor: const Color(0xFF202020),
+      body: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        crossAxisAlignment: CrossAxisAlignment.center,
+        children: [
+          if (_isCameraPreviewVisible && (_cameraController?.value.isInitialized ?? false))
+            Expanded(
+              child: CameraPreview(_cameraController!),
+            ),
+          if (_isLoading)
+            const Center(child: CircularProgressIndicator()),
+          if (_selectedImage != null || _description != null)
+            Expanded(
+              child: SingleChildScrollView(
+                child: Column(
                   children: [
-                    Image.file(
-                      _selectedImage!,
-                      width: double.infinity,
-                      height: 200,
-                      fit: BoxFit.cover,
-                    ),
+                    if (_selectedImage != null)
+                      Padding(
+                        padding: const EdgeInsets.all(5.0),
+                        child: Image.file(
+                          _selectedImage!,
+                          width: double.infinity,
+                          height: 400,
+                          fit: BoxFit.contain,
+                        ),
+                      ),
                     const SizedBox(height: 16.0),
+                    if (_description != null)
+                    Container(
+                        padding: const EdgeInsets.all(16.0),
+                        margin: const EdgeInsets.only( top: 10.0, left: 10.0, right: 10.0, bottom: 24.0, ),
+                        decoration: BoxDecoration(
+                          color: Colors.white,
+                          borderRadius: BorderRadius.circular(12.0),
+                          border: Border.all(
+                            color: Colors.grey.withOpacity(0.8),
+                            width: 1.5,
+                          ),
+                          boxShadow: [
+                            BoxShadow(
+                              color: Color(0xFFD14000),
+                              blurRadius: 12.0,
+                              offset: Offset(2, 2),
+                            ),
+                          ],
+                        ),
+                        child: Text(
+                          _description!,
+                          textAlign: TextAlign.justify,
+                          style: GoogleFonts.roboto(
+                          fontSize: 16,
+                          fontWeight: FontWeight.normal,
+                          height: 1.5,
+                          color: Colors.black,
+                        ),
+                      ),
+                    ),
                   ],
                 ),
-              if (_description != null)
-                Container(
-                  padding: const EdgeInsets.all(16.0),
-                  margin: const EdgeInsets.only(top: 16.0),
-                  decoration: BoxDecoration(
-                    color: Colors.white,
-                    borderRadius: BorderRadius.circular(8.0),
-                    boxShadow: [
-                      BoxShadow(
-                        color: Colors.black26,
-                        blurRadius: 8.0,
-                        offset: Offset(2, 2),
-                      ),
-                    ],
-                  ),
-                  child: Text(
-                    _description!,
-                    textAlign: TextAlign.center,
-                    style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
-                  ),
+              ),
+            ),
+        ],
+      ),
+      bottomNavigationBar: ClipRRect(
+        borderRadius: const BorderRadius.only(
+          topLeft: Radius.circular(26),
+          topRight: Radius.circular(26),
+        ),
+        child: BottomAppBar(
+          color: const Color(0xFFFF6D00),
+          shape: const CircularNotchedRectangle(),
+          notchMargin: 8.0,
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+            children: [
+              IconButton(
+                onPressed: () async {
+                  if(!_isLoading)
+                  _hideCameraPreview();
+                  await _pickFromGallery();
+                },
+                icon: const Icon(
+                  Icons.photo_library,
+                  size: 48,
+                  color: Colors.white,
                 ),
+                tooltip: "Selecionar da Galeria",
+              ),
+              IconButton(
+                onPressed: () async {
+                  if(!_isLoading)
+                  await _captureImageAuto();
+                },
+                icon: const Icon(
+                  Icons.camera,
+                  size: 48,
+                  color: Colors.white,
+                ),
+                tooltip: "Captura Automática",
+              ),
+              IconButton(
+                onPressed: () async{
+                  if(!_isLoading)
+                  await _captureImage();
+                },
+                icon: const Icon(
+                  Icons.camera_alt,
+                  size: 48,
+                  color: Colors.white,
+                ),
+                tooltip: "Tirar Foto",
+              ),
             ],
           ),
         ),

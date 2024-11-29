@@ -186,3 +186,43 @@ Para garantir a segurança da chave da API utilizada neste projeto, a chave é a
     ```
 3. Garanta que a api do Gemini API está habilitada no teu projeto do Google Cloud.
 </details>
+
+<details>
+   <summary>Gerar e Distribuir o APK do Projeto</summary>
+
+Siga os passos abaixo para gerar a versão de **release** (distribuição) do APK do aplicativo.
+
+
+## **Pré-requisitos**
+- Certifique-se de ter o **Flutter** instalado e configurado corretamente na máquina.
+- Verifique se o ambiente Android está configurado com o **SDK**, **NDK** e **JDK** compatíveis.
+- Confirme que você possui os seguintes arquivos:
+  - `key.properties`
+  - `photo_reader_ai_release.jks`
+
+
+## **Passos para Gerar o APK**
+
+### **1. Preparar os Arquivos de Assinatura**
+1. **Copie os arquivos necessários:**
+   - Copie o arquivo `key.properties` da pasta raiz do projeto para o caminho:
+     ```bash
+     android/key.properties
+     ```
+   - Copie o arquivo `photo_reader_ai_release.jks` da pasta raiz do projeto para o caminho:
+     ```bash
+     android/app/photo_reader_ai_release.jks
+     ```
+
+## **Executar o Projeto**
+Para rodar o projeto diretamente em um dispositivo físico ou emulador, use o seguinte comando:
+
+```bash
+flutter run
+```
+
+## **Observações**
+- Certifique-se de que o dispositivo físico está conectado e com a **depuração USB** ativada, ou que o emulador Android está em execução.
+- O APK gerado no modo release é otimizado para distribuição e não inclui ferramentas de depuração.
+- Antes de distribuir o APK, teste-o em diferentes dispositivos para garantir a compatibilidade.
+</details>

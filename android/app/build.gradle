@@ -41,7 +41,9 @@ android {
             storePassword keystoreProperties['storePassword']
         }
     }
-
+    
+    ndkVersion = "25.1.8937393"
+    
     buildTypes {
         release {
             // signingConfig = signingConfigs.debug
